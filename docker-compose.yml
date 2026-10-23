@@ -39,7 +39,7 @@ services:
       - CHUNK_SIZE=${CHUNK_SIZE:-800}
       - CHUNK_OVERLAP=${CHUNK_OVERLAP:-120}
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8001}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -53,7 +53,7 @@ services:
       dockerfile: Dockerfile
     container_name: modular_rag_frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3001}:80"
     depends_on:
       - backend
     restart: unless-stopped
