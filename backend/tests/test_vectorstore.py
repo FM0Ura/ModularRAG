@@ -127,6 +127,47 @@ async def test_vector_store_hybrid_search():
 
 
 @pytest.mark.asyncio
+async def test_hybrid_search_query_compilation_bindparams():
+    session_factory = MagicMock()
+    mock_session = AsyncMock()
+    session_factory.return_value.__aenter__.return_value = mock_session
+
+    dense_result = MagicMock()
+    dense_result.fetchall.return_value = []
+    sparse_result = MagicMock()
+    sparse_result.fetchall.return_value = []
+    mock_session.execute.side_effect = [dense_result, sparse_result]
+
+    store = PGVectorStore(session_factory=session_factory)
+    await store.hybrid_search(
+        query="teste bindparams",
+        query_vector=[0.1] * 384,
+        dense_top_k=10,
+        sparse_top_k=10,
+    )
+
+    assert mock_session.execute.call_count == 2
+    dense_call, sparse_call = mock_session.execute.call_args_list
+
+    dense_stmt = dense_call.args[0]
+    dense_params = dense_call.args[1]
+    compiled_dense_params = set(dense_stmt.compile().params.keys())
+    assert "qvec" in compiled_dense_params
+    assert "dense_k" in compiled_dense_params
+    assert dense_params["dense_k"] == 10
+    assert "CAST(:qvec AS vector)" in str(dense_stmt)
+    assert "c.embedding IS NOT NULL" in str(dense_stmt)
+
+    sparse_stmt = sparse_call.args[0]
+    sparse_params = sparse_call.args[1]
+    compiled_sparse_params = set(sparse_stmt.compile().params.keys())
+    assert "qtext" in compiled_sparse_params
+    assert "sparse_k" in compiled_sparse_params
+    assert sparse_params["qtext"] == "teste bindparams"
+    assert sparse_params["sparse_k"] == 10
+
+
+@pytest.mark.asyncio
 async def test_vector_store_delete_document():
     session_factory = MagicMock()
     mock_session = AsyncMock()

@@ -52,10 +52,11 @@ class PGVectorStore(VectorStore):
             # 1. Busca Densa (Cosseno HNSW)
             dense_stmt = text("""
                 SELECT c.id, c.document_id, d.filename, c.page_number, c.content,
-                       (1 - (c.embedding <=> :qvec::vector)) AS score
+                       (1 - (c.embedding <=> CAST(:qvec AS vector))) AS score
                 FROM document_chunks c
                 JOIN documents d ON d.id = c.document_id
-                ORDER BY c.embedding <=> :qvec::vector
+                WHERE c.embedding IS NOT NULL
+                ORDER BY c.embedding <=> CAST(:qvec AS vector)
                 LIMIT :dense_k
             """)
             dense_res = await session.execute(
