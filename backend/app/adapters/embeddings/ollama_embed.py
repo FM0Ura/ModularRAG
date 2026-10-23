@@ -24,10 +24,17 @@ class OllamaEmbeddingAdapter(EmbeddingProvider):
             return resp.json()["embedding"]
 
     async def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
         results = []
-        for t in texts:
-            vec = await self.embed_query(t)
-            results.append(vec)
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for t in texts:
+                resp = await client.post(
+                    f"{self.base_url}/api/embeddings",
+                    json={"model": self.model, "prompt": t},
+                )
+                resp.raise_for_status()
+                results.append(resp.json()["embedding"])
         return results
 
     @property

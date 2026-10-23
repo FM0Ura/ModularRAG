@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional, Any
 from flashrank import Ranker, RerankRequest
 from app.domain.interfaces import Reranker
@@ -32,7 +33,7 @@ class FlashRankReranker(Reranker):
         ]
 
         rerank_req = RerankRequest(query=query, passages=passages)
-        scored_passages = self.ranker.rerank(rerank_req)
+        scored_passages = await asyncio.to_thread(self.ranker.rerank, rerank_req)
 
         results: List[SearchResult] = []
         for item in scored_passages:

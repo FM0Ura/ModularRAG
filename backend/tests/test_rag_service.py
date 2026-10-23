@@ -277,3 +277,71 @@ async def test_ingestion_service_batch_embedding_batches_at_64():
     assert first_call_len == 64
     assert second_call_len == 6
     assert all(c.embedding is not None for c in chunks)
+
+
+@pytest.mark.asyncio
+async def test_ingestion_service_cleanup_on_add_chunks_failure():
+    mock_chunking = MagicMock()
+    mock_vectorstore = AsyncMock()
+    mock_embed = AsyncMock()
+    mock_session_factory = MagicMock()
+
+    mock_session = AsyncMock()
+    mock_session_factory.return_value.__aenter__.return_value = mock_session
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    mock_chunking.split_pages.return_value = [
+        DocumentChunk(document_id="doc-1", chunk_index=0, page_number=1, content="Texto teste")
+    ]
+    mock_embed.embed_documents.return_value = [[0.1] * 10]
+    mock_vectorstore.add_chunks.side_effect = RuntimeError("Falha ao salvar no VectorStore")
+
+    service = IngestionService(
+        chunking_service=mock_chunking,
+        vector_store=mock_vectorstore,
+        embedding_provider=mock_embed,
+        session_factory=mock_session_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="Falha ao salvar no VectorStore"):
+        await service.ingest_file("arquivo_com_erro.txt", b"Texto de teste")
+
+    # Documento deve ter sido removido na sessão de limpeza
+    assert mock_session.delete.called or mock_session.execute.call_count >= 2
+    assert mock_session.commit.call_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_ingestion_service_cleanup_on_embedding_failure():
+    mock_chunking = MagicMock()
+    mock_vectorstore = AsyncMock()
+    mock_embed = AsyncMock()
+    mock_session_factory = MagicMock()
+
+    mock_session = AsyncMock()
+    mock_session_factory.return_value.__aenter__.return_value = mock_session
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    mock_chunking.split_pages.return_value = [
+        DocumentChunk(document_id="doc-1", chunk_index=0, page_number=1, content="Texto teste")
+    ]
+    mock_embed.embed_documents.side_effect = RuntimeError("Provedor de embeddings offline")
+
+    service = IngestionService(
+        chunking_service=mock_chunking,
+        vector_store=mock_vectorstore,
+        embedding_provider=mock_embed,
+        session_factory=mock_session_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="Provedor de embeddings offline"):
+        await service.ingest_file("arquivo_falha_emb.txt", b"Texto de teste")
+
+    # Vector store nem deve ser chamado, mas o cleanup deve ser executado
+    assert not mock_vectorstore.add_chunks.called
+    assert mock_session.delete.called or mock_session.execute.call_count >= 2
+    assert mock_session.commit.call_count >= 2

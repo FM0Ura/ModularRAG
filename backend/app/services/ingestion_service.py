@@ -2,7 +2,7 @@ import hashlib
 import inspect
 import uuid
 from typing import Callable
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.parsers.factory import get_parser_for_filename
 from app.services.chunking_service import ChunkingService
@@ -62,19 +62,35 @@ class IngestionService:
                 add_res.close()
             await session.commit()
 
-        # 4. Divide páginas em chunks
-        chunks = self.chunking_service.split_pages(pages, document_id=str(doc_id))
+        try:
+            # 4. Divide páginas em chunks
+            chunks = self.chunking_service.split_pages(pages, document_id=str(doc_id))
 
-        # 5. Gera embeddings em lotes (batch_size=64)
-        batch_size = 64
-        for i in range(0, len(chunks), batch_size):
-            batch = chunks[i : i + batch_size]
-            texts = [c.content for c in batch]
-            embeddings = await self.embedding_provider.embed_documents(texts)
-            for chunk, emb in zip(batch, embeddings):
-                chunk.embedding = emb
+            # 5. Gera embeddings em lotes (batch_size=64)
+            batch_size = 64
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i : i + batch_size]
+                texts = [c.content for c in batch]
+                embeddings = await self.embedding_provider.embed_documents(texts)
+                for chunk, emb in zip(batch, embeddings):
+                    chunk.embedding = emb
 
-        # 6. Salva chunks no VectorStore
-        await self.vector_store.add_chunks(chunks)
+            # 6. Salva chunks no VectorStore
+            await self.vector_store.add_chunks(chunks)
+        except Exception:
+            async with self.session_factory() as session:
+                del_fn = getattr(session, "delete", None)
+                if callable(del_fn):
+                    try:
+                        del_res = del_fn(db_doc)
+                        if inspect.isawaitable(del_res):
+                            await del_res
+                    except Exception:
+                        pass
+                await session.execute(
+                    delete(DBDocument).where(DBDocument.id == doc_id)
+                )
+                await session.commit()
+            raise
 
         return db_doc
