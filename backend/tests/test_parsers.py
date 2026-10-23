@@ -7,6 +7,8 @@ from app.adapters.parsers.docx_parser import DocxParser
 from app.adapters.parsers.factory import get_parser_for_filename
 from app.adapters.parsers.pdf_parser import PDFParser
 from app.adapters.parsers.text_parser import TextParser
+from app.adapters.parsers.docling_parser import DoclingParser
+from app.core.config import Settings
 
 
 # --- TextParser Tests ---
@@ -143,13 +145,69 @@ def test_factory_selects_correct_parser():
     p3 = get_parser_for_filename("doc.md")
     p4 = get_parser_for_filename("doc.txt")
     p5 = get_parser_for_filename("DOC.PDF")
-    assert p1.__class__.__name__ == "PDFParser"
-    assert p2.__class__.__name__ == "DocxParser"
+    # Default is DoclingParser for rich PDF/DOCX layouts
+    assert p1.__class__.__name__ == "DoclingParser"
+    assert p2.__class__.__name__ == "DoclingParser"
     assert p3.__class__.__name__ == "TextParser"
     assert p4.__class__.__name__ == "TextParser"
-    assert p5.__class__.__name__ == "PDFParser"
+    assert p5.__class__.__name__ == "DoclingParser"
 
 
 def test_factory_unsupported_extension_raises_value_error():
     with pytest.raises(ValueError, match="Formato de arquivo não suportado"):
         get_parser_for_filename("planilha.xlsx")
+
+
+# --- DoclingParser Tests ---
+
+def test_docling_parser_empty_file_raises_value_error():
+    parser = DoclingParser()
+    with pytest.raises(ValueError, match="Arquivo vazio"):
+        parser.parse(b"", "vazio.pdf")
+
+
+def test_docling_parser_mocked_success_with_pages():
+    mock_converter = MagicMock()
+    mock_result = MagicMock()
+    mock_doc = MagicMock()
+    mock_doc.pages = {1: MagicMock(), 2: MagicMock()}
+    mock_doc.export_to_markdown.side_effect = lambda page_no=None: f"Conteudo da pagina {page_no}" if page_no else "Conteudo total"
+    mock_result.document = mock_doc
+    mock_converter.convert.return_value = mock_result
+
+    parser = DoclingParser(converter=mock_converter)
+    pages = parser.parse(b"simulacao de bytes", "documento.pdf")
+
+    assert len(pages) == 2
+    assert pages[0].page_number == 1
+    assert "Conteudo da pagina 1" in pages[0].content
+    assert pages[1].page_number == 2
+    assert "Conteudo da pagina 2" in pages[1].content
+    assert pages[0].metadata == {"filename": "documento.pdf"}
+
+
+def test_docling_parser_real_markdown_conversion():
+    parser = DoclingParser()
+    sample_content = b"# Documento Tecnico\n\nTexto de teste com tabela:\n\n| Parametro | Valor |\n|---|---|\n| Timeout | 45s |"
+    pages = parser.parse(sample_content, "tabela.txt")
+
+    assert len(pages) >= 1
+    assert pages[0].page_number == 1
+    assert "Documento Tecnico" in pages[0].content
+    assert "Timeout" in pages[0].content
+    assert "45s" in pages[0].content
+
+
+def test_factory_selects_docling_when_configured():
+    custom_settings = Settings(PARSER_PROVIDER="docling")
+    p_pdf = get_parser_for_filename("doc.pdf", config=custom_settings)
+    p_docx = get_parser_for_filename("doc.docx", config=custom_settings)
+    assert p_pdf.__class__.__name__ == "DoclingParser"
+    assert p_docx.__class__.__name__ == "DoclingParser"
+
+    std_settings = Settings(PARSER_PROVIDER="standard")
+    p_std_pdf = get_parser_for_filename("doc.pdf", config=std_settings)
+    p_std_docx = get_parser_for_filename("doc.docx", config=std_settings)
+    assert p_std_pdf.__class__.__name__ == "PDFParser"
+    assert p_std_docx.__class__.__name__ == "DocxParser"
+

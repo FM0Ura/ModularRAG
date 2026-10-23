@@ -24,6 +24,7 @@ services:
     container_name: modular_rag_backend
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-modular_rag}
+      - PARSER_PROVIDER=${PARSER_PROVIDER:-docling}
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - LLM_MODEL=${LLM_MODEL:-llama3.2}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-fastembed}

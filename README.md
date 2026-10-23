@@ -26,6 +26,7 @@
 O **Modular RAG** é uma solução completa e pronta para produção construída segundo os princípios da **Arquitetura Limpa (Ports & Adapters)**. O sistema permite upload, parsing e ingestão assíncrona de múltiplos formatos de documento (PDF, DOCX, TXT, MD), recuperação híbrida em duas fases (busca vetorial densa + busca lexical sparse com *Reciprocal Rank Fusion - RRF*), reclassificação semântica local via *Cross-Encoder* (FlashRank ONNX), e streaming em tempo real token a token via *Server-Sent Events (SSE)* com citação numérica de fontes (`[1]`, `[2]`).
 
 ### Principais Diferenciais
+- **Parsing Avançado com Docling:** Suporte nativo ao **Docling** para extração precisa de tabelas, layouts complexos e formatação rica de PDFs e DOCX, convertendo em Markdown estruturado com fallback leve para parsers padrão (`pypdf`/`python-docx`).
 - **Desacoplamento Total de Provedores:** Alterne entre modelos locais (**Ollama**, **FastEmbed**) e em nuvem (**OpenAI**, **Gemini**) alterando apenas variáveis no `.env`.
 - **Busca Híbrida de Alta Precisão:** Combinação do melhor dos dois mundos — relevância semântica (vetores densos com pgvector) e correspondência exata de termos (PostgreSQL Full-Text Search - tsvector) ponderados por RRF ($k=60$).
 - **Reranker Local Leve:** Utiliza FlashRank com ONNX Runtime para reordenar candidatos sem necessidade de GPU/CUDA, filtrando conteúdos com score abaixo do threshold configurado.
@@ -39,6 +40,7 @@ O **Modular RAG** é uma solução completa e pronta para produção construída
 **Modular RAG** is a production-ready, decoupled Retrieval-Augmented Generation system engineered around **Clean Architecture (Ports & Adapters)**. It supports multi-format document ingestion (PDF, DOCX, TXT, MD), two-phase hybrid search (dense embeddings + sparse PostgreSQL full-text search fused with *Reciprocal Rank Fusion - RRF*), local CPU cross-encoder reranking (FlashRank ONNX), and real-time token streaming over *Server-Sent Events (SSE)* with exact source citations (`[1]`, `[2]`).
 
 ### Key Features
+- **Advanced Document Parsing with Docling:** Native **Docling** integration for layout-aware PDF and DOCX parsing with table preservation and markdown conversion, plus lightweight standard fallbacks (`pypdf`/`python-docx`).
 - **Strictly Decoupled Adapters:** Switch LLM and Embedding providers (Ollama, FastEmbed, OpenAI, Gemini) via environment variables without changing any code.
 - **Hybrid Retrieval (Dense + Sparse):** Leverages pgvector for semantic search and PostgreSQL FTS for keyword accuracy, combined via RRF ($k=60$).
 - **Local Reranking without GPU:** Uses FlashRank ONNX Runtime to filter irrelevant snippets below confidence thresholds.
@@ -82,7 +84,7 @@ flowchart TD
             AdapOpenAI[OpenAIAdapter]
             AdapGemini[GeminiAdapter]
             FlashRank[FlashRankReranker (ONNX)]
-            Parsers[PDF / DOCX / Text Parsers]
+            Parsers[Docling / PDF / DOCX / Text Parsers]
         end
     end
 
@@ -165,6 +167,11 @@ O arquivo `.env` controla o comportamento de todos os componentes do sistema:
 # ==============================================================================
 LLM_PROVIDER=ollama
 LLM_MODEL=llama3.2:3b
+
+# ==============================================================================
+# Provedor de Parser: "docling" (avançado com tabelas) ou "standard" (pypdf/docx)
+# ==============================================================================
+PARSER_PROVIDER=docling
 
 # ==============================================================================
 # Provedor de Embeddings: "fastembed", "ollama" ou "openai"
